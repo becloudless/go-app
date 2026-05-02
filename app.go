@@ -24,7 +24,8 @@ const pathConfig = "config.yaml"
 
 type App struct {
 	Name         string
-	Home         string
+	ConfigFolder string
+	CacheFolder  string
 	Version      string
 	Embedded     *embed.FS
 	EmbeddedPath string
@@ -33,7 +34,7 @@ type App struct {
 }
 
 func (app *App) LoadConfig(self any) error {
-	configFullPath := filepath.Join(app.Home, pathConfig)
+	configFullPath := filepath.Join(app.ConfigFolder, pathConfig)
 	if stat, err := os.Stat(configFullPath); os.IsNotExist(err) {
 		return nil
 	} else if stat.IsDir() {
@@ -51,7 +52,7 @@ func (app *App) LoadConfig(self any) error {
 	return nil
 }
 
-func (app *App) DefaultHomeFolder() string {
+func (app *App) DefaultConfigFolder() string {
 	home, err := homedir.Dir()
 	if err != nil {
 		logs.WithE(err).Warn("Failed to find home directory")
@@ -60,7 +61,16 @@ func (app *App) DefaultHomeFolder() string {
 	return filepath.Join(home, ".config/"+app.Name)
 }
 
-func (app *App) Init(home string, self any) error {
+func (app *App) DefaultCacheFolder() string {
+	home, err := homedir.Dir()
+	if err != nil {
+		logs.WithE(err).Warn("Failed to find home directory")
+		home = os.TempDir()
+	}
+	return filepath.Join(home, ".cache", app.Name)
+}
+
+func (app *App) Init(configFolder string, self any) error {
 	// Internal binary app version
 	//if semVersion, err := semver.Parse(app.Version); err != nil {
 	//	return errs.WithEF(err, data.WithField("Version", app.Version), "Failed to parse application Version")
@@ -68,19 +78,25 @@ func (app *App) Init(home string, self any) error {
 	//	app.semVersion = version.SemVersion{Version: semVersion}
 	//}
 
-	// prepare home
-	app.Home = home
-	if err := os.MkdirAll(app.Home, 0755); err != nil {
-		return errs.WithEF(err, data.WithField("path", app.Home), "Failed to create "+app.Name+" home directory")
+	if app.ConfigFolder != "" {
+		if err := ensureFolder(app.ConfigFolder); err != nil {
+			return errs.WithEF(err, data.WithField("path", app.ConfigFolder), "Failed to prepare config folder")
+		}
 	}
 
-	// home version
-	lock := flock.New(filepath.Join(app.Home, pathLock))
+	if app.CacheFolder != "" {
+		if err := ensureFolder(app.CacheFolder); err != nil {
+			return errs.WithEF(err, data.WithField("path", app.CacheFolder), "Failed to prepare cache folder")
+		}
+	}
+
+	// cache version
+	lock := flock.New(filepath.Join(app.CacheFolder, pathLock))
 	if err := lock.Lock(); err != nil {
 		return errs.WithE(err, "Failed to get home preparation lock")
 	}
 	defer lock.Unlock()
-	homeVersionBytes, err := os.ReadFile(filepath.Join(app.Home, pathVersion))
+	homeVersionBytes, err := os.ReadFile(filepath.Join(app.CacheFolder, pathVersion))
 	if err != nil {
 		logs.WithE(err).Warn("Failed to read home version. May be first run")
 	}
@@ -92,7 +108,7 @@ func (app *App) Init(home string, self any) error {
 
 	// embedded
 	if app.Embedded != nil {
-		app.EmbeddedPath = filepath.Join(app.Home, pathEmbedded, app.Version)
+		app.EmbeddedPath = filepath.Join(app.CacheFolder, pathEmbedded, app.Version)
 		if app.Version == "0.0.0" || string(homeVersionBytes) != app.Version || err != nil {
 			logs.WithField("homeVersion", string(homeVersionBytes)).
 				WithField("currentVersion", app.Version).
@@ -113,7 +129,7 @@ func (app *App) Init(home string, self any) error {
 	}
 
 	if string(homeVersionBytes) != app.Version {
-		if err := os.WriteFile(filepath.Join(app.Home, pathVersion), []byte(app.Version), 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(app.CacheFolder, pathVersion), []byte(app.Version), 0644); err != nil {
 			logs.WithE(err).Error("Failed to write current " + app.Name + " version to home")
 		}
 	}
@@ -161,7 +177,7 @@ func (app *App) extractEmbedded(target string) error {
 }
 
 func (app *App) cleanupEmbedded() error {
-	dir, err := os.ReadDir(filepath.Join(app.Home, pathEmbedded))
+	dir, err := os.ReadDir(filepath.Join(app.CacheFolder, pathEmbedded))
 	if err != nil {
 		return errs.WithE(err, "Failed to read home folder")
 	}
@@ -193,10 +209,25 @@ func (app *App) cleanupEmbedded() error {
 			logs.WithField("embedded", oldestEmbedded).Debug("oldest app embedded version is currently used version, not cleaning it up")
 			return nil
 		}
-		toCleanupPath := filepath.Join(app.Home, pathEmbedded, oldestEmbedded)
+		toCleanupPath := filepath.Join(app.CacheFolder, pathEmbedded, oldestEmbedded)
 		if err := os.RemoveAll(toCleanupPath); err != nil {
 			return errs.WithEF(err, data.WithField("folder", toCleanupPath), "Failed to cleanup old embedded")
 		}
+	}
+	return nil
+}
+
+///////////////
+
+func ensureFolder(path string) error {
+	if stat, err := os.Stat(path); os.IsNotExist(err) {
+		if err := os.MkdirAll(path, 0700); err != nil {
+			return errs.WithEF(err, data.WithField("folder", path), "Failed to create folder")
+		}
+	} else if err != nil {
+		return errs.WithEF(err, data.WithField("folder", path), "Failed to read folder")
+	} else if !stat.IsDir() {
+		return errs.WithF(data.WithField("folder", path), "Path exists but is not a directory")
 	}
 	return nil
 }
