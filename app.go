@@ -88,10 +88,11 @@ func (app *App) Init(self any) error {
 		return err
 	}
 
-	if app.CacheFolder != "" {
-		if err := ensureFolder(app.CacheFolder); err != nil {
-			return errs.WithEF(err, data.WithField("path", app.CacheFolder), "Failed to prepare cache folder")
-		}
+	if app.CacheFolder == "" {
+		app.CacheFolder = app.DefaultCacheFolder()
+	}
+	if err := ensureFolder(app.CacheFolder); err != nil {
+		return errs.WithEF(err, data.WithField("path", app.CacheFolder), "Failed to prepare cache folder")
 	}
 
 	// cache version
