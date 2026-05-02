@@ -70,7 +70,7 @@ func (app *App) DefaultCacheFolder() string {
 	return filepath.Join(home, ".cache", app.Name)
 }
 
-func (app *App) Init(configFolder string, self any) error {
+func (app *App) Init(self any) error {
 	// Internal binary app version
 	//if semVersion, err := semver.Parse(app.Version); err != nil {
 	//	return errs.WithEF(err, data.WithField("Version", app.Version), "Failed to parse application Version")
@@ -78,10 +78,14 @@ func (app *App) Init(configFolder string, self any) error {
 	//	app.semVersion = version.SemVersion{Version: semVersion}
 	//}
 
-	if app.ConfigFolder != "" {
-		if err := ensureFolder(app.ConfigFolder); err != nil {
-			return errs.WithEF(err, data.WithField("path", app.ConfigFolder), "Failed to prepare config folder")
-		}
+	if app.ConfigFolder == "" {
+		app.ConfigFolder = app.DefaultConfigFolder()
+	}
+	if err := ensureFolder(app.ConfigFolder); err != nil {
+		return errs.WithEF(err, data.WithField("path", app.ConfigFolder), "Failed to prepare config folder")
+	}
+	if err := app.LoadConfig(self); err != nil {
+		return err
 	}
 
 	if app.CacheFolder != "" {
@@ -93,24 +97,19 @@ func (app *App) Init(configFolder string, self any) error {
 	// cache version
 	lock := flock.New(filepath.Join(app.CacheFolder, pathLock))
 	if err := lock.Lock(); err != nil {
-		return errs.WithE(err, "Failed to get home preparation lock")
+		return errs.WithE(err, "Failed to get cache preparation lock")
 	}
 	defer lock.Unlock()
-	homeVersionBytes, err := os.ReadFile(filepath.Join(app.CacheFolder, pathVersion))
+	cacheVersionBytes, err := os.ReadFile(filepath.Join(app.CacheFolder, pathVersion))
 	if err != nil {
-		logs.WithE(err).Warn("Failed to read home version. May be first run")
-	}
-
-	// config
-	if err := app.LoadConfig(self); err != nil {
-		return err
+		logs.WithE(err).Warn("Failed to read cache version. May be first run")
 	}
 
 	// embedded
 	if app.Embedded != nil {
 		app.EmbeddedPath = filepath.Join(app.CacheFolder, pathEmbedded, app.Version)
-		if app.Version == "0.0.0" || string(homeVersionBytes) != app.Version || err != nil {
-			logs.WithField("homeVersion", string(homeVersionBytes)).
+		if app.Version == "0.0.0" || string(cacheVersionBytes) != app.Version || err != nil {
+			logs.WithField("cacheVersion", string(cacheVersionBytes)).
 				WithField("currentVersion", app.Version).
 				Info(app.Name + " version changed")
 
@@ -128,9 +127,9 @@ func (app *App) Init(configFolder string, self any) error {
 		}
 	}
 
-	if string(homeVersionBytes) != app.Version {
+	if string(cacheVersionBytes) != app.Version {
 		if err := os.WriteFile(filepath.Join(app.CacheFolder, pathVersion), []byte(app.Version), 0644); err != nil {
-			logs.WithE(err).Error("Failed to write current " + app.Name + " version to home")
+			logs.WithE(err).Error("Failed to write current " + app.Name + " version to cache")
 		}
 	}
 
@@ -179,7 +178,7 @@ func (app *App) extractEmbedded(target string) error {
 func (app *App) cleanupEmbedded() error {
 	dir, err := os.ReadDir(filepath.Join(app.CacheFolder, pathEmbedded))
 	if err != nil {
-		return errs.WithE(err, "Failed to read home folder")
+		return errs.WithE(err, "Failed to read cache folder")
 	}
 	var embeddedVersions []string
 	for _, entry := range dir {

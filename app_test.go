@@ -143,7 +143,7 @@ func TestEnsureFolder_FileInsteadOfFolder(t *testing.T) {
 
 func TestInit_Basic(t *testing.T) {
 	a, _ := newTmpApp(t)
-	err := a.Init(a.ConfigFolder, &testConfig{})
+	err := a.Init(&testConfig{})
 	require.NoError(t, err)
 
 	// version file should be written
@@ -161,20 +161,19 @@ func TestInit_LoadsConfig(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(a.ConfigFolder, pathConfig), content, 0600))
 
 	cfg := &testConfig{}
-	require.NoError(t, a.Init(a.ConfigFolder, cfg))
+	require.NoError(t, a.Init(cfg))
 	assert.Equal(t, "world", cfg.Foo)
 	assert.Equal(t, 7, cfg.Bar)
 }
 
 func TestInit_SameVersionSkipsVersionWrite(t *testing.T) {
 	a, _ := newTmpApp(t)
-	require.NoError(t, a.Init(a.ConfigFolder, &testConfig{}))
+	require.NoError(t, a.Init(&testConfig{}))
 
-	// Modify version file mtime baseline, then call Init again with same version.
 	info1, err := os.Stat(filepath.Join(a.CacheFolder, pathVersion))
 	require.NoError(t, err)
 
-	require.NoError(t, a.Init(a.ConfigFolder, &testConfig{}))
+	require.NoError(t, a.Init(&testConfig{}))
 
 	info2, err := os.Stat(filepath.Join(a.CacheFolder, pathVersion))
 	require.NoError(t, err)
@@ -185,11 +184,10 @@ func TestInit_SameVersionSkipsVersionWrite(t *testing.T) {
 
 func TestInit_VersionChangedUpdatesVersionFile(t *testing.T) {
 	a, _ := newTmpApp(t)
-	require.NoError(t, a.Init(a.ConfigFolder, &testConfig{}))
+	require.NoError(t, a.Init(&testConfig{}))
 
-	// Simulate version bump
 	a.Version = "2.0.0"
-	require.NoError(t, a.Init(a.ConfigFolder, &testConfig{}))
+	require.NoError(t, a.Init(&testConfig{}))
 
 	versionBytes, err := os.ReadFile(filepath.Join(a.CacheFolder, pathVersion))
 	require.NoError(t, err)
@@ -208,7 +206,7 @@ func TestInit_WithEmbedded(t *testing.T) {
 	a.Embedded = &testEmbedded
 	a.EmbeddedPath = "" // will be set by Init
 
-	err := a.Init(a.ConfigFolder, &testConfig{})
+	err := a.Init(&testConfig{})
 	require.NoError(t, err)
 
 	// Embedded file should be extracted under EmbeddedPath
