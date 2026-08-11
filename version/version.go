@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/becloudless/becloudless/pkg/git"
 	"github.com/blang/semver/v4"
+	"github.com/go-git/go-git/v6"
 	"github.com/n0rad/go-erlog/errs"
 )
 
@@ -50,15 +50,17 @@ func ReverseVersions(a *[]Version) {
 }
 
 func GenerateDateCommitVersion(repoPath string, major int) (string, error) {
-	repository, err := git.OpenRepository(repoPath)
+	repo, err := git.PlainOpenWithOptions(repoPath, &git.PlainOpenOptions{DetectDotGit: true})
 	if err != nil {
 		return "", errs.WithE(err, "Failed to open repository to get commit hash")
 	}
 
-	hash, err := repository.HeadCommitHash(true)
+	head, err := repo.Head()
 	if err != nil {
 		return "", errs.WithE(err, "Failed to generate version")
 	}
+
+	hash := head.Hash().String()[0:7]
 	return generateDateCommitVersion(major, hash, time.Now()), nil
 }
 
