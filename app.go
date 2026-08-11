@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/becloudless/go-app/version"
 	"github.com/gofrs/flock"
 	"github.com/mitchellh/go-homedir"
-	"github.com/n0rad/go-app/version"
 	"github.com/n0rad/go-erlog/data"
 	"github.com/n0rad/go-erlog/errs"
 	"github.com/n0rad/go-erlog/logs"
